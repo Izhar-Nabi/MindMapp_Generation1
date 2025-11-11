@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Header Link Extractor</title>
+    <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>MindMap Generation</h1>
+
+        <form id="extractor-form">
+            <!-- Website URL -->
+            <label for="url">Website URL</label>
+            <input 
+                type="text" 
+                id="url" 
+                name="url"
+                placeholder="Enter your Website URL" 
+                required
+            >
+
+            <!-- Username -->
+            <label for="username">Username</label>
+            <input 
+                type="text" 
+                id="username" 
+                name="username" 
+                placeholder="Enter your username" 
+            >
+
+            <!-- Password -->
+            <label for="password">Password</label>
+            <input 
+                type="password" 
+                id="password" 
+                name="password" 
+                placeholder="Enter your password"
+            >
+
+            <!-- Headless checkbox -->
+            <!-- <div class="checkbox-container">
+                <input 
+                    type="checkbox" 
+                    id="headless" 
+                    name="headless" 
+                    checked
+                >
+                <label for="headless">Run in headless mode</label>
+            </div> -->
+
+            <div class="form-group">
+                <button type="submit">Extract Header Links</button>
+            </div>
+        </form>
+
+        <!-- Loading spinner -->
+        <div id="spinner" class="spinner" style="display: none;"></div>
+
+        <!-- Results section -->
+        <div id="results-container" style="display: none;">
+            <h2>Results</h2>
+            <p id="result-message"></p>
+            <pre id="results"></pre>
+            <a id="download-link" style="display: none;">Download Header Links JSON</a>
+        </div>
+
+        <!-- Log display section -->
+        <div id="log-container" class="log-container" style="display: none;">
+            <h2>Logs</h2>
+            <pre id="logs"></pre>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="static/js/script.js"></script>
+</body>
+</html>
