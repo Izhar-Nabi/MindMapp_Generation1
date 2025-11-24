@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Header Link Extractor</title>
     <link rel="stylesheet" href="static/css/style.css">
+    <link rel="icon" type="image/png" href="static\images\favicon.png">
 </head>
 <body>
     <div class="container">
@@ -19,6 +20,8 @@
                 name="url"
                 placeholder="Enter your Website URL" 
                 required
+                pattern="https?://.+"
+                title="Please enter a valid URL starting with http:// or https://"
             >
 
             <!-- Optional Login URL -->
@@ -28,6 +31,8 @@
                 id="login_url"
                 name="login_url"
                 placeholder="Optional login page URL (e.g., https://example.com/login)"
+                pattern="https?://.+"
+                title="Please enter a valid URL starting with http:// or https://"
             >
 
             <!-- Username -->

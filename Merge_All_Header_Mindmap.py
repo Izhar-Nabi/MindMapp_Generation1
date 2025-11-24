@@ -76,14 +76,14 @@ def merge_mindmaps(base_folder):
 
             # --- Find matching header node ---
             target_node = None
-            for node in header_node.findall(".//node"):
+            for node in header_node.findall("./node"):
                 if node.attrib.get("TEXT", "").strip().lower() == page_name.lower():
                     target_node = node
                     break
 
             if target_node is None:
-                print(f"⚠️ No matching header node found for '{page_name}'. Skipping merge.")
-                continue
+                print(f"➕ Creating new node under Header: {page_name}")
+                target_node = ET.SubElement(header_node, "node", TEXT=page_name)
 
             # --- Append subnodes ---
             sub_children = sub_root.findall("./node")
@@ -107,4 +107,4 @@ def merge_mindmaps(base_folder):
 
 
 # if __name__ == "__main__":
-#     merge_mindmaps()
+#     merge_mindmaps("340bpriceguide")
