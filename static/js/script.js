@@ -17,6 +17,7 @@ document.getElementById('extractor-form').addEventListener('submit', async funct
     event.preventDefault();
 
     const url = document.getElementById('url').value.trim();
+    const login_url = document.getElementById('login_url') ? document.getElementById('login_url').value.trim() : '';
     const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value.trim();
     // const headless = document.getElementById('headless').checked;
@@ -40,7 +41,7 @@ document.getElementById('extractor-form').addEventListener('submit', async funct
         const response = await fetch('/extract', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, username, password})
+            body: JSON.stringify({ url, login_url, username, password})
         });
 
         const data = await response.json();

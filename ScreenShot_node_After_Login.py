@@ -30,7 +30,7 @@ def safe_filename(url: str) -> str:
     return safe[:150]
 
 
-async def login_and_get_context(url,p, username, password, headless=True):
+async def login_and_get_context(AUTH_STATE,url,p, username, password, headless=True):
     """Logs in (or reuses saved session) and returns authenticated context."""
     browser = await p.chromium.launch(headless=headless)
     context = None
@@ -43,7 +43,7 @@ async def login_and_get_context(url,p, username, password, headless=True):
             ignore_https_errors=True
         )
         page = await context.new_page()
-        await page.goto(url, timeout=60000)
+        await page.goto(url,wait_until="domcontentloaded", timeout=60000)
         if "Logout" in (await page.content()):
             print("✅ Session still valid, skipping login.")
             await page.close()
@@ -149,7 +149,7 @@ def add_screenshot_node(parent_node, screenshot_path):
     <html>
       <body>
         <p>
-        <img src="{screenshot_path}" width="950" height="500"/>
+        <img src="{screenshot_path}" width="500" height="250"/>
         </p>
       </body>
     </html>
@@ -160,13 +160,14 @@ def add_screenshot_node(parent_node, screenshot_path):
     parent_node.append(node)
 
 
-async def Screenshot(username, password, base_folder=".", headless=True):
+async def Screenshot(url,username, password, base_folder=".", headless=True):
     INPUT_MM = os.path.join(base_folder, "Full_Website_Structure_After_Login_updated.mm")
     OUTPUT_MM = os.path.join(base_folder, "Full_Website_Structure_After_Login_updated_with_Screenshot.mm")
     SCREENSHOT_DIR = os.path.join(base_folder, "hyperlink_screenshots_After_Login")
+    AUTH_STATE=os.path.join(base_folder,"auth_state.json")
     os.makedirs(SCREENSHOT_DIR, exist_ok=True)
     async with async_playwright() as p:
-        browser, context = await login_and_get_context(p, username, password, headless=headless)
+        browser, context = await login_and_get_context(AUTH_STATE,url,p, username, password, headless=headless)
         tree = ET.parse(INPUT_MM)
         root = tree.getroot()
 

@@ -55,7 +55,7 @@ def add_screenshot_node(parent_node, screenshot_path):
     <html>
     <body>
         <p>
-        <img src="{screenshot_url}" width="950" height="500"/>
+        <img src="{screenshot_url}" width="500" height="250"/>
         </p>
     </body>
     </html>

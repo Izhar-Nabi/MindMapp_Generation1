@@ -2,11 +2,62 @@ import os
 import json
 from openai import OpenAI # type: ignore
 from dotenv import load_dotenv # type: ignore
+from opik import configure 
+from opik.integrations.openai import track_openai 
+import re
+import xml.etree.ElementTree as ET
+
 
 # Load environment variables from .env file
 load_dotenv()
+def configure_openai():
+    """Configure OpenAI GPT client with Opik tracing."""
+    load_dotenv()
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    if not OPENAI_API_KEY:
+        raise ValueError("❌ OPENAI_API_KEY not found in .env file.")
+    
+    # Initialize Opik
+    configure()
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    return track_openai(client)
 
 # Files
+def replace_ampersand_with_space(input_file, output_file=None):
+    """
+    Replace '&' with a space in all node TEXT attributes inside a FreeMind (.mm) file,
+    even if the XML has unescaped ampersands.
+    """
+    if not os.path.exists(input_file):
+        print(f"❌ File not found: {input_file}")
+        return
+
+    if output_file is None:
+        output_file = input_file
+
+    # 🔧 Read raw text and fix invalid '&' before parsing
+    with open(input_file, "r", encoding="utf-8") as f:
+        xml_text = f.read()
+
+    # Replace only ampersands that are NOT part of &amp;, &lt;, etc.
+    xml_text = re.sub(r'&(?!amp;|lt;|gt;|quot;|apos;)', '&amp;', xml_text)
+
+    # Parse the fixed XML
+    root = ET.fromstring(xml_text)
+
+    count = 0
+    for node in root.iter("node"):
+        text = node.get("TEXT")
+        if text and "&" in text:
+            print(f"replacing {text}")
+            new_text = text.replace("&", " ")
+            node.set("TEXT", new_text)
+            count += 1
+
+    tree = ET.ElementTree(root)
+    tree.write(output_file, encoding="utf-8", xml_declaration=True)
+    print(f"✅ Replaced '&' with spaces in {count} nodes → {output_file}")
+
 def validation(base_folder="."):
     MM_FILE = os.path.join(base_folder, "Merged_Website_Structure.mm")
     OUTPUT_FILE = os.path.join(base_folder, "Full_Website_Structure_updated.mm")
@@ -17,7 +68,7 @@ def validation(base_folder="."):
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("❌ OPENAI_API_KEY not found in .env file")
-    client = OpenAI(api_key=api_key)
+    client = configure_openai()
 
     # Load files
     with open(MM_FILE, "r", encoding="utf-8") as f:
@@ -37,7 +88,7 @@ def validation(base_folder="."):
     - Main Content
     - Footer
     3. The "Header" and "Footer" should appear only once, under the Home Page. The content inside them should not include in any other page.
-    4. Every other page (e.g.,Search, About, Contact, Login(if present), Signup(if present), etc.) must be direct subnodes of the header.
+    4. Every other page (e.g.,Search, About, Contact, Login(if present), Signup(if present), etc.) must be direct subnodes of the header .
     5. Each page node must include all its UI elements (buttons, forms, links, and content) as nested subnodes.
     6. If any page contains subpages, represent them as child nodes under that page.
     7. Maintain a clear hierarchical structure that accurately reflects parent-child relationships between pages and their components.
@@ -81,7 +132,7 @@ def validation(base_folder="."):
 
     # Call GPT
     response = client.chat.completions.create(
-        model="gpt-4.1-mini",   # or "gpt-4o-mini" if you want faster/cheaper
+        model="gpt-4.1",   # or "gpt-4o-mini" if you want faster/cheaper
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": full_prompt},
@@ -99,11 +150,11 @@ def validation(base_folder="."):
     # 🧹 Remove closing ``` if present
     if mindmap_content.endswith("```"):
         mindmap_content = mindmap_content[:-3].strip()
-
     # Save updated mindmap
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         f.write(mindmap_content)
 
+    replace_ampersand_with_space(OUTPUT_FILE,OUTPUT_FILE)
     print(f"✅ Updated mindmap saved as {OUTPUT_FILE}")
 
 

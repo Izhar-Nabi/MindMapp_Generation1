@@ -17,7 +17,7 @@ def generating_full_mindmapp(base_folder="."):
     # Find the "Login" node in the main file
     login_node_main = None
     for node in main_root.iter("node"):
-        if node.attrib.get("TEXT") == "Login" or node.attrib.get("TEXT") == "Sign up / Sign in":
+        if node.attrib.get("TEXT") == "Login" or node.attrib.get("TEXT") == "Sign up / Sign in" or node.attrib.get("TEXT") == "Login / Sign up":
             login_node_main = node
             break
 

@@ -2,10 +2,22 @@ import os
 import json
 from openai import OpenAI # type: ignore
 from dotenv import load_dotenv # type: ignore
+from opik import configure 
+from opik.integrations.openai import track_openai 
 
 # Load environment variables from .env file
 load_dotenv()
-
+def configure_openai():
+    """Configure OpenAI GPT client with Opik tracing."""
+    load_dotenv()
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    if not OPENAI_API_KEY:
+        raise ValueError("❌ OPENAI_API_KEY not found in .env file.")
+    
+    # Initialize Opik
+    configure()
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    return track_openai(client)
 # Files
 def validation_after_login(base_folder="."):
     MM_FILE = os.path.join(base_folder, "Merged_Website_Structure.mm")
@@ -14,7 +26,7 @@ def validation_after_login(base_folder="."):
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("❌ OPENAI_API_KEY not found in .env file")
-    client = OpenAI(api_key=api_key)
+    client = configure_openai()
 
     # Load files
     with open(MM_FILE, "r", encoding="utf-8") as f:

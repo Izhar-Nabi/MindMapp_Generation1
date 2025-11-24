@@ -5,7 +5,7 @@ import logging
 from header_extractor1 import extract_all_links_with_submenus
 from header_extractor1 import home_screenshot
 from home_page_link_extractor import extract_links
-from home_page_mindmap import configure_openai, generate_home_mindmap_from_screenshot
+from home_page_mindmap import home_page
 from Header_link_Extractor import extract_links_from_header_json
 from Header_mindmaps import generate_mindmaps_from_headers
 from Merge_All_Header_Mindmap import merge_mindmaps
@@ -18,6 +18,8 @@ import asyncio
 import os
 import sys
 import traceback
+from dotenv import load_dotenv
+load_dotenv()
 
 # CRITICAL: Use ProactorEventLoop for Windows + Playwright subprocess support
 if sys.platform == "win32":
@@ -30,6 +32,7 @@ logging.getLogger('engineio').setLevel(logging.WARNING)
 
 
 setup_logging(app)
+
 
 @app.route('/')
 def index():
@@ -51,6 +54,7 @@ def extract():
 
     username = data.get("username","").strip()
     password = data.get("password","").strip()
+    login_url= data.get("login_url","").strip()
 
 
     if not url:
@@ -58,6 +62,7 @@ def extract():
 
     try:
         logging.info(f"Extracting links from: {url}")
+        logging.info(f"logging url {login_url}")
         from domain_extractor import extract_domain
         folder_name = extract_domain(url)
         logging.info("Creating Folder with domain name")
@@ -68,15 +73,15 @@ def extract():
             logging.info(f"!!!!!!!!!!!!!!!!!!! {folder_name} folder already created!!!!!!!!!!!!!")
         # Run the new extractor function
         json_file_path = os.path.join(folder_name, "header_links.json")
-        image_path = os.path.join(folder_name, "home_page_screenshot.png")
-        home_screenshot(url, output_path=image_path)
+        output_folder = os.path.join(folder_name,"screenshot/home")
+        home_screenshot(url, output_folder)
         home_link=extract_links(url)
         output_file=os.path.join(folder_name, "home_page_link.json")
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(home_link, f, indent=2)
         logging.info("Home page links and screenshot captured.")
-        client=configure_openai()
-        generate_home_mindmap_from_screenshot(client,os.path.join(folder_name, "mindmaps"),output_file,image_path)
+        Screenshot_folder=os.path.join(folder_name,"screenshot/home")
+        output_mm_file=os.path.join(folder_name,"mindmaps/home.mm")
         logging.info("Home page mindmap generated.")
         links_file = extract_all_links_with_submenus(url, headless=True, output_file=json_file_path)
 
@@ -103,15 +108,22 @@ def extract():
 
             # --- Define headers folder path ---
             headers_folder = os.path.join(domain_folder, "headers")
-
+            extracted_header_path=os.path.join(domain_folder,"header_links.json")
+            output_folder=os.path.join(domain_folder,"mindmaps")
+            screenshot_folder=os.path.join(domain_folder,"screenshot")
+            home_screenshot_folder=os.path.join(screenshot_folder,"home")
+            home_file=os.path.join(domain_folder,"home_page_link.json")
+            output_mm_file=os.path.join(domain_folder,"mindmaps","home.mm")
             # --- Check if headers folder exists ---
             if os.path.isdir(headers_folder):
                 logging.info(f"📂 Found headers folder {headers_folder}. Starting MindMap generation...")
 
                 # 🧠 Generate MindMaps for all header link files
-                asyncio.run(generate_mindmaps_from_headers(base_folder=folder_name))
+                asyncio.run(generate_mindmaps_from_headers(headers_folder,extracted_header_path,output_folder,screenshot_folder))
                 logging.info("✅ MindMaps created from header links.")
-
+                logging.info("✅ making home mindmap")
+                asyncio.run( home_page(home_screenshot_folder,home_file,output_mm_file))
+                logging.info("✅ done home mindmap")
                 # 🔗 Merge all generated MindMaps
                 logging.info("🔄 Merging all header MindMaps...")
                 merge_mindmaps(base_folder=domain_folder)
@@ -132,19 +144,36 @@ def extract():
                     logging.info("🔐 Starting login section...")
                     from ScreenShot_node_After_Login import login_and_get_context
                     from playwright.async_api import async_playwright # type: ignore
+                    AUTH_STATE=os.path.join(domain_folder,"auth_state.json")
 
                     async def main_login():
                         async with async_playwright() as p:
-                            browser, context = await login_and_get_context(url,p, username, password, headless=True)
+                            browser, context = await login_and_get_context(AUTH_STATE,url,p, username, password, headless=True)
                             if context:
                                 # Continue with the rest of the after-login process
+                                from header_extractor_after_login import extract_main_nav_after_login
+                                from header_extractor_after_login import home_screenshot
                                 from Header_Links_Ectractor_After_Login import extract_header_links_and_screenshots
+                                from Home_page_link_extractor_After_login import extract_home_link
                                 from Header_mindmaps_after_login import header
+                                from home_page_mindmaps_after_login import home_page
                                 from Merge_all_header_mindmap_After_Login import merge_mindmaps
                                 from Validation_Mindmap_After_login import validation_after_login
-
-                                await extract_header_links_and_screenshots(username, password, domain_folder)
-                                await header(base_folder=domain_folder)
+                                
+                                output_folder = os.path.join(domain_folder, "screenshots_After_Login", "Home")
+                                HEADER_FILE=os.path.join(domain_folder,"header_links_After_Login.json")
+                                HEADERS_FOLDER=os.path.join(domain_folder,"headers_After_Login")
+                                home_path=os.path.join(domain_folder,"home_page_links_after_login.json")
+                                SCREENSHOT_FOLDER=os.path.join(domain_folder,"screenshots_After_Login")
+                                MINDMAP_FOLDER = os.path.join(domain_folder,"mindmaps_After_Login")
+                                output_mm_file= os.path.join(MINDMAP_FOLDER,"home.mm")
+                                await extract_main_nav_after_login(AUTH_STATE,HEADER_FILE, login_url, username, password, headless=True)
+                                await home_screenshot(url,output_folder)
+                                await extract_header_links_and_screenshots(url,AUTH_STATE,HEADERS_FOLDER)
+                                logging.info("Bhai yahan hu ma home ka mindmap bna rha hu")
+                                await extract_home_link(AUTH_STATE,url,home_path)
+                                await header(url,HEADERS_FOLDER,SCREENSHOT_FOLDER,MINDMAP_FOLDER)
+                                home_page(output_folder,home_path,output_mm_file)
                                 merge_mindmaps(base_folder=domain_folder)
                                 validation_after_login(base_folder=domain_folder)
                             await browser.close()
@@ -153,7 +182,7 @@ def extract():
 
                     logging.info("📸 Capturing screenshots after login...")
                     from ScreenShot_node_After_Login import Screenshot
-                    asyncio.run(Screenshot(username=username, password=password, base_folder=domain_folder, headless=True))
+                    asyncio.run(Screenshot(url,username=username, password=password, base_folder=domain_folder, headless=True))
                     logging.info("✅ Screenshots after login captured.")
 
                     # 🧠 Merge all MindMaps into a single file

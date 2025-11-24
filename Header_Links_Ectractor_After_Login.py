@@ -1,135 +1,137 @@
-from playwright.async_api import async_playwright # pyright: ignore[reportMissingImports]
-import json
-import asyncio
-from bs4 import BeautifulSoup
 import os
-from urllib.parse import urljoin
-from dotenv import load_dotenv # type: ignore
+import json
+import re
+import asyncio
+from playwright.async_api import async_playwright
 
-# Load credentials from .env file
-load_dotenv()
-
-# USERNAME = os.getenv("SITE_USERNAME")
-# PASSWORD = os.getenv("SITE_PASSWORD")
-
-BASE_URL = "https://www.340bpriceguide.net"
+# === CONFIG ===
+AUTH_STATE = "auth_state.json"
+HEADERS_FOLDER = "headers_After_Login"
 
 
-async def extract_links_from_page(page, page_url):
-    """Extract all meaningful links from the current page"""
-    html = await page.content()
-    soup = BeautifulSoup(html, "html.parser")
-    title = soup.title.string.strip() if soup.title else "No Title"
-
-    links = []
-    for a in soup.find_all("a", href=True):
-        href = urljoin(page_url, a["href"])
-        text = a.get_text(strip=True)
-        if href and text:
-            links.append({
-                "page_title": title,
-                "hyper_text": text,
-                "link": href
-            })
-    return links
 
 
-async def extract_header_links_and_screenshots(username, password, base_folder=".", headless=True):
-    HEADERS_FOLDER = os.path.join(base_folder, "headers_After_Login")
-    SCREENSHOT_FOLDER = os.path.join(base_folder, "screenshots_After_Login")
+# Utility: remove duplicate links
+def dedupe_links(links):
+    seen = set()
+    unique = []
+    for l in links:
+        href = l.get("href")
+        if href and href not in seen:
+            seen.add(href)
+            unique.append(l)
+    return unique
+
+
+# === MAIN (SKIP LOGIN USING SAVED SESSION) ===
+async def extract_header_links_and_screenshots(url,AUTH_STATE,HEADERS_FOLDER):
     os.makedirs(HEADERS_FOLDER, exist_ok=True)
-    os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
+    if not os.path.exists(AUTH_STATE):
+        print("\n❌ auth_state.json not found!")
+        print("Run login script once to generate it.\n")
+        return
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=headless, slow_mo=200)
-        context = await browser.new_context()
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(storage_state=AUTH_STATE)
         page = await context.new_page()
 
-        print("🌐 Navigating to login page...")
-        await page.goto(f"{BASE_URL}/login", wait_until="domcontentloaded")
+        print("Using saved session... skipping login!")
 
-        print("🔐 Waiting for login form...")
-        await page.wait_for_selector("input[name='username']:visible", timeout=15000)
-        await page.wait_for_selector("input[name='password']:visible", timeout=15000)
+        # Go to home/dashboard
+        await page.goto(url, timeout=60000)
+        await page.wait_for_load_state("networkidle")
+        await asyncio.sleep(5)
 
-        print("🔑 Filling credentials...")
-        await page.locator("input[name='username']:visible").fill(username)
-        await page.locator("input[name='password']:visible").fill(password)
+        print("\n🔍 Extracting visible header links...")
 
-        # Optional checkbox
-        try:
-            await page.locator("input[type='checkbox']:visible").check()
-        except:
-            pass
-
-        print("➡️ Clicking 'Log In'...")
-        await page.locator("button:has-text('Log In'):visible").click()
-
-        # Wait for login success
-        try:
-            await page.wait_for_url("**/my-profile", timeout=15000)
-            print("✅ Login successful!")
-        except:
-            print("⚠️ Login may not have redirected yet, waiting for network idle...")
-            await page.wait_for_load_state("networkidle")
-            await asyncio.sleep(3)
-
-        # Take screenshot after login
-        await page.screenshot(path=os.path.join(SCREENSHOT_FOLDER, "after_login.png"), full_page=True)
-        print("📸 Screenshot saved: after_login.png")
-
-        # Extract header links
-        print("🔗 Extracting header links...")
+        # Step 1: Get visible header links
         header_links = await page.eval_on_selector_all(
-            "header a",
-            "els => els.map(e => ({text: e.innerText.trim(), href: e.href}))"
+            "header a, nav a, .nav a, .navbar a",
+            """els => els
+                .map(a => ({ text: a.innerText.trim(), href: a.href }))
+                .filter(l => l.text && l.href && !l.href.startsWith("javascript"))
+            """
         )
 
-        # Clean links: remove empty or logout links
-        clean_links = [
-            l for l in header_links
-            if l.get("text")
-            and "logout" not in l.get("href", "").lower()
-            and l.get("text").strip().lower() != "logout"
-        ]
+        print(f"Top-level header links: {len(header_links)}")
 
-        with open(os.path.join(base_folder, "header_links_After_Login.json"), "w", encoding="utf-8") as f:
-            json.dump(clean_links, f, indent=2, ensure_ascii=False)
-        print(f"✅ Found {len(clean_links)} header links (Logout skipped).")
+        all_links = header_links.copy()
 
-        # Visit each header link
-        for link in clean_links:
-            text = link["text"].replace(" ", "_").replace("/", "_")
-            href = link["href"]
+        # Step 2: Extract submenu links by hovering parent <li>
+        print("\n🔍 Scanning for dropdown / submenu items...")
 
-            print(f"\n🌍 Visiting: {text} → {href}")
+        menu_parents = page.locator(
+            "li:has(ul), li:has(ul.sub-menu), li:has(div.sub-menu)"
+        )
+
+        parent_count = await menu_parents.count()
+        print(f"Found {parent_count} possible dropdown parent items")
+
+        for i in range(parent_count):
+            parent = menu_parents.nth(i)
             try:
-                await page.goto(href, wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(2)
+                await parent.hover()
+                await asyncio.sleep(0.5)
 
-                # Take screenshot
-                screenshot_path = os.path.join(SCREENSHOT_FOLDER, f"{text}.png")
-                await page.screenshot(path=screenshot_path, full_page=True)
-                print(f"📸 Screenshot saved: {screenshot_path}")
+                submenu_links = await parent.eval_on_selector_all(
+                    "a[href]",
+                    """els => els
+                        .map(a => ({ text: a.innerText.trim(), href: a.href }))
+                        .filter(x => x.text && x.href && !x.href.startsWith("javascript"))
+                    """
+                )
 
-                # Extract links
-                links = await extract_links_from_page(page, href)
-
-                # Save links
-                output_path = os.path.join(HEADERS_FOLDER, f"{text}.json")
-                with open(output_path, "w", encoding="utf-8") as f:
-                    json.dump(links, f, indent=2, ensure_ascii=False)
-                print(f"✅ Extracted {len(links)} links → {output_path}")
+                if submenu_links:
+                    print(f"  ➤ Found {len(submenu_links)} submenu links")
+                    all_links.extend(submenu_links)
 
             except Exception as e:
-                print(f"❌ Error processing {href}: {e}")
+                print(f"  ⚠️ Submenu hover failed: {e}")
+
+        # Deduplicate all header + submenu links
+        all_links = dedupe_links(all_links)
+
+        # Save final header links
+        with open("header_links_After_Login.json", "w", encoding="utf-8") as f:
+            json.dump(all_links, f, indent=2, ensure_ascii=False)
+
+        print(f"\n✅ Total header + submenu links saved: {len(all_links)}")
+
+        # Step 3: Visit each header link
+        for link in all_links:
+            name = re.sub(r"[^\w]", "_", link["text"])
+            url = link["href"]
+            if link['text']=="Logout":
+                continue
+            print(f"\n🌐 Visiting: {link['text']} → {url}")
+
+            try:
+                await page.goto(url, wait_until="networkidle", timeout=50000)
+                await asyncio.sleep(5)
+
+                # Extract all links from the page
+                page_links = await page.eval_on_selector_all(
+                    "a[href]",
+                    """els => els
+                        .map(a => ({ text: a.innerText.trim(), href: a.href }))
+                        .filter(l => l.text && l.href)
+                    """
+                )
+
+                json_path = os.path.join(HEADERS_FOLDER, f"{name}.json")
+                with open(json_path, "w", encoding="utf-8") as f:
+                    json.dump(page_links, f, indent=2, ensure_ascii=False)
+
+                print(f"   ➤ Saved {len(page_links)} links → {name}.json")
+
+            except Exception as e:
+                print(f"   ❌ Failed to load {url}: {e}")
 
         await browser.close()
-        print("\n🎉 All header pages processed successfully (Logout skipped)!")
+
+    print("\n🎉 ALL DONE — Full header + submenu extraction complete!")
 
 
-# if __name__ == "__main__":
-#     if not USERNAME or not PASSWORD:
-#         raise ValueError("❌ Please set SITE_USERNAME and SITE_PASSWORD in your .env file")
-
-#     extract_header_links_and_screenshots(USERNAME, PASSWORD, headless=False)
+if __name__ == "__main__":
+    asyncio.run(extract_header_links_and_screenshots())

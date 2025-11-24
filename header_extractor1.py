@@ -1,6 +1,7 @@
 from playwright.sync_api import sync_playwright, TimeoutError
 import json
 import os
+import math
 
 def extract_all_links_with_submenus(url, headless=False, output_file="header_links.json"):
     """
@@ -103,9 +104,11 @@ def extract_all_links_with_submenus(url, headless=False, output_file="header_lin
             for link in all_links:
                 text = link.get("text", "").strip()
                 href = link.get("href", "").strip()
-                if text=="":
-                    print(f"  ⚠️ Skipping link with empty text and href: {href} and text: '{text}'")
+                if href==url:
                     continue
+                if text=="":
+                    text = href.rstrip('/').split('/')[-1] 
+                    unique_links.append({"text": text, "href": href})
                 else:
                     unique_links.append({"text": text, "href": href})
 
@@ -134,16 +137,57 @@ def extract_all_links_with_submenus(url, headless=False, output_file="header_lin
         finally:
             browser.close()
             
-def home_screenshot(url, output_path="home_page_screenshot.png"):
-    print(f"📸 Taking screenshot of home page: {url}")
+def home_screenshot(url,output_folder):
+    partition_height= 1500
+    scroll_increment= 400
+    scroll_pause=0.2
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
-        page.goto(url, timeout=60000)
-        page.set_viewport_size({"width": 1280, "height": 720})
-        page.screenshot(path=output_path, full_page=False)
+        page.goto(url, wait_until="domcontentloaded")
+
+        # -------------------------
+        # Scroll slowly to load all lazy content
+        # -------------------------
+        total_height = page.evaluate("document.body.scrollHeight")
+        print(f"📏 Total page height: {total_height}px")
+
+        for y in range(0, total_height, scroll_increment):
+            page.evaluate(f"window.scrollTo(0, {y})")
+            page.wait_for_timeout(int(scroll_pause * 1000))  # wait in milliseconds
+
+        # Ensure final scroll to bottom
+        page.evaluate(f"window.scrollTo(0, {total_height})")
+        page.wait_for_timeout(500)
+
+        # -------------------------
+        # Take partitioned screenshots
+        # -------------------------
+        page_width = page.evaluate("document.body.scrollWidth")
+        num_screens = math.ceil(total_height / partition_height)
+        print(f"🖼 Number of screenshots: {num_screens}")
+
+        for i in range(num_screens):
+            top = i * partition_height
+            height = min(partition_height, total_height - top)
+
+            # Resize viewport to current partition height
+            page.set_viewport_size({
+                "width": page_width,
+                "height": height
+            })
+
+            # Scroll to top of this partition
+            page.evaluate(f"window.scrollTo(0, {top})")
+            page.wait_for_timeout(int(scroll_pause * 1000))
+
+            # Screenshot this partition
+            file_path = os.path.join(output_folder, f"image_{i+1}.png")
+            page.screenshot(path=file_path)
+            print(f"✅ Saved: {file_path}")
+
         browser.close()
-    print(f"✅ Screenshot of home page saved as {output_path}")
+    
 
 
 if __name__ == "__main__":
