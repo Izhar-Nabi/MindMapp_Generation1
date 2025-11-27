@@ -3,139 +3,139 @@ import json
 import os
 import math
 
-def extract_all_links_with_submenus(url, headless=False, output_file="header_links.json"):
+def extract_header_links(url, headless=True, output_file="header_links.json"):
     """
-    Extracts all header links, including from simple dropdowns and complex mega menus.
-    It hovers over each potential parent item and scrapes any revealed sub-menus.
+    Extract ONLY:
+    - Top level header links (text + href)
+    - Dropdown submenu links (text + href)
+    
+    Works for: WordPress, Shopify, custom HTML, mega menus.
     """
+    
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=headless, slow_mo=100)
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-        )
-        page = context.new_page()
+        browser = p.chromium.launch(headless=headless)
+        page = browser.new_page()
+        page.goto(url, wait_until="domcontentloaded", timeout=60000)
+
         all_links = []
 
-        try:
-            print(f"🌐 Visiting: {url}")
-            # page.goto(url, wait_until="networkidle")
-            page.goto(url, wait_until="domcontentloaded", timeout=60000)
-
-            # --- STEP 1: Scrape all initially visible header links ---
-            print("🕵️‍♀️ Extracting initially visible top-level header links...")
-            header_selector = "header a"
-            initial_links = page.eval_on_selector_all(
-                header_selector,
-                """els => els
-                    .filter(e => e.href && e.offsetParent !== null) // Filter for visible links
-                    .map(e => ({
-                        text: e.innerText.trim(),
-                        href: e.href
-                    }))"""
-            )
-            all_links.extend(initial_links)
-            print(f"✅ Found {len(initial_links)} initial visible links.")
-
-            # --- STEP 2: Iterate and scrape sub-menus (simple and mega) ---
-            # This selector finds any LI in the header that contains a sub_menu (UL or DIV)
-            parent_menu_selector = "header li:has(ul.sub_menu), header li:has(div.sub_menu)"
-            
-            print(f"🔍 Looking for parent menu items with selector: '{parent_menu_selector}'")
-            parent_locators = page.locator(parent_menu_selector)
-            
-            parent_count = parent_locators.count()
-
-            if parent_count == 0:
-                print("ℹ️ No hoverable parent menu items found. The initial scan is complete.")
-            else:
-                print(f"✅ Found {parent_count} parent menu items. Now scraping sub-menus one by one...")
-                
-                for i in range(parent_count):
-                    parent_item = parent_locators.nth(i)
-                    try:
-                        # Find the main link of the parent to get its text
-                        parent_link = parent_item.locator("a").first
-                        parent_text = parent_link.inner_text()
-                        print(f"\n Hovering over '{parent_text.splitlines()[0].strip()}'...")
-                        
-                        parent_link.hover(timeout=5000)
-                        
-                        # Wait for either type of sub-menu to become visible
-                        submenu_locator = parent_item.locator("ul.sub_menu, div.sub_menu").first
-                        submenu_locator.wait_for(state="visible", timeout=5000)
-                        
-                        # Use a more robust JS evaluator to get text from various elements
-                        submenu_links = submenu_locator.locator("a").evaluate_all(
-                            """els => els.filter(e => e.href).map(e => {
-                                let text = '';
-                                // Try to find a heading or specific text element first
-                                const heading = e.querySelector('h1, h2, h3, h4, h5');
-                                if (heading) {
-                                    text = heading.innerText;
-                                } else {
-                                    // Fallback to the link's own text content
-                                    text = e.innerText;
-                                }
-                                // If still no text, try the image alt text
-                                if (!text || text.trim() === '') {
-                                    const img = e.querySelector('img');
-                                    if (img && img.alt) {
-                                        text = img.alt;
-                                    }
-                                }
-                                return { text: text.trim(), href: e.href };
-                            })"""
-                        )
-                        
-                        if submenu_links:
-                            print(f"  ➡️ Found {len(submenu_links)} sub-menu links.")
-                            all_links.extend(submenu_links)
-                        
-                    except TimeoutError:
-                        print("  ⚠️ Timed out waiting for a sub-menu to appear. Skipping.")
-                    except Exception as e:
-                        print(f"  ⚠️ Could not process a sub-menu: {e}")
-
-            # --- STEP 3: Clean and de-duplicate the master list ---
-            print("\n🧹 Cleaning and de-duplicating all collected links...")
-            unique_links = []
-            # seen_hrefs = set()
-
-            for link in all_links:
-                text = link.get("text", "").strip()
-                href = link.get("href", "").strip()
-                if href==url:
-                    continue
-                if text=="":
-                    text = href.rstrip('/').split('/')[-1] 
-                    unique_links.append({"text": text, "href": href})
-                else:
-                    unique_links.append({"text": text, "href": href})
-
-            #     if "\n" in text:
-            #         text = text.split("\n")[0].strip()
-
-            #     if not text or not href or href.startswith("javascript:") or href in seen_hrefs:
-            #         continue
-                
-            #     seen_hrefs.add(href)
-            #     unique_links.append({"text": text, "href": href})
-
-            # --- STEP 4: Save final results ---
-            if unique_links:
-                with open(output_file, "w", encoding="utf-8") as f:
-                    json.dump(unique_links, f, indent=2, ensure_ascii=False)
-                print(f"✅ Extracted a total of {len(unique_links)} unique header links. Saved to {output_file}")
-                return output_file
-            else:
-                print("❌ No valid links found after the entire process.")
-                return None
-
-        except Exception as e:
-            print(f"❌ An error occurred during the process: {e}")
+        # ----------------------------------------
+        # 1. Detect <header> tag
+        # ----------------------------------------
+        header = page.locator("header")
+        if header.count() == 0:
+            print("❌ No <header> found.")
             return None
-        finally:
-            browser.close()
+
+        header = header.first
+
+        # ----------------------------------------
+        # 2. Extract all top-level <a> links
+        # ----------------------------------------
+        top_links = header.locator("a[href]").all()
+
+        for link in top_links:
+            try:
+                text = link.inner_text().strip()
+                href = link.get_attribute("href")
+
+                if not href:
+                    continue
+                if href =="#":
+                    continue
+                # skip email/tel/js links
+                if href.startswith(("javascript:", "mailto:", "tel:","/")):
+                    continue
+
+                # Clean text
+                if not text:
+                    continue
+
+                all_links.append({"text": text, "href": href})
+
+            except:
+                pass
+
+        # ----------------------------------------
+        # 3. Extract dropdown links by hovering over menu items
+        # ----------------------------------------
+        menu_items = header.locator("nav a, li > a, li > button").all()
+
+        for item in menu_items:
+            try:
+                item.hover(timeout=2000)
+            except:
+                continue
+
+            # Find dropdowns revealed after hover
+            dropdown = item.locator(
+                """
+                xpath=ancestor::li//*[self::ul or self::div][
+                    contains(@class, 'menu') or
+                    contains(@class, 'dropdown') or
+                    contains(@class, 'sub') or
+                    contains(@class, 'mega')
+                ]
+                """
+            )
+
+            if dropdown.count() == 0:
+                continue
+
+            dd = dropdown.first
+
+            try:
+                dd.wait_for(state="visible", timeout=1500)
+            except:
+                continue
+
+            submenu_links = dd.locator("a[href]").all()
+
+            for sl in submenu_links:
+                try:
+                    text = sl.inner_text().strip()
+                    href = sl.get_attribute("href")
+
+                    if not href:
+                        continue
+                    if href.startswith(("javascript:", "mailto:", "tel:","/")):
+                        continue
+                    if href =="#":
+                        continue
+
+                    if not text:
+                        print(href)
+                        continue
+
+                    all_links.append({"text": text, "href": href})
+
+                except:
+                    pass
+
+        # ----------------------------------------
+        # 4. Clean & dedupe
+        # ----------------------------------------
+        cleaned = []
+        seen = set()
+
+        for link in all_links:
+            t = link["text"].strip()
+            h = link["href"].strip()
+
+            if (t, h) in seen:
+                continue
+
+            seen.add((t, h))
+            cleaned.append({"text": t, "href": h})
+
+        # ----------------------------------------
+        # 5. Save Output
+        # ----------------------------------------
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(cleaned, f, indent=2, ensure_ascii=False)
+
+        print(f"✅ Done. Extracted {len(cleaned)} links.")
+        return cleaned
             
 def home_screenshot(url,output_folder):
     partition_height= 1500
@@ -192,7 +192,7 @@ def home_screenshot(url,output_folder):
 
 if __name__ == "__main__":
     target_url = "https://dayzee.com/"
-    links_file = extract_all_links_with_submenus(target_url, headless=False)
+    links_file = extract_header_links(target_url, headless=False)
 
     if links_file:
         print(f"\n🎉 Process complete. Check the file: {links_file}")
