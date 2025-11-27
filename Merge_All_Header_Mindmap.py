@@ -1,5 +1,7 @@
 import os
 import xml.etree.ElementTree as ET
+import copy
+
 
 import os
 import xml.etree.ElementTree as ET
@@ -76,23 +78,25 @@ def merge_mindmaps(base_folder):
 
             # --- Find matching header node ---
             target_node = None
-            for node in header_node.findall("./node"):
+            for node in header_node.findall(".//node"):
                 if node.attrib.get("TEXT", "").strip().lower() == page_name.lower():
                     target_node = node
                     break
 
             if target_node is None:
-                print(f"➕ Creating new node under Header: {page_name}")
-                target_node = ET.SubElement(header_node, "node", TEXT=page_name)
+                print(f"⚠️ No matching header node found for '{page_name}'. Skipping merge.")
+                continue
 
             # --- Append subnodes ---
+            # sub_children = sub_root.findall("./node")
+            # sub_children = [n for n in sub_root.findall(".//node") if n is not sub_root]
             sub_children = sub_root.findall("./node")
             if not sub_children:
                 print(f"⚠️ No subnodes found in {file_name}.")
                 continue
 
             for child in sub_children:
-                target_node.append(child)
+                target_node.append(copy.deepcopy(child))
 
             print(f"✅ Merged '{page_name}' into Header → {target_node.attrib.get('TEXT')}")
 
@@ -107,4 +111,4 @@ def merge_mindmaps(base_folder):
 
 
 # if __name__ == "__main__":
-#     merge_mindmaps("340bpriceguide")
+#     merge_mindmaps()

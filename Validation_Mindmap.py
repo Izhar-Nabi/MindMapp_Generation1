@@ -23,6 +23,11 @@ def configure_openai():
     return track_openai(client)
 
 # Files
+def fix_invalid_xml_entities(xml_str):
+    xml_str = xml_str.replace("&", "")
+    xml_str = xml_str.replace("<br>", "")
+    xml_str = xml_str.replace("</br>", "")
+    return xml_str
 def replace_ampersand_with_space(input_file, output_file=None):
     """
     Replace '&' with a space in all node TEXT attributes inside a FreeMind (.mm) file,
@@ -43,6 +48,7 @@ def replace_ampersand_with_space(input_file, output_file=None):
     xml_text = re.sub(r'&(?!amp;|lt;|gt;|quot;|apos;)', '&amp;', xml_text)
 
     # Parse the fixed XML
+    xml_text = fix_invalid_xml_entities(xml_text)
     root = ET.fromstring(xml_text)
 
     count = 0
@@ -58,7 +64,7 @@ def replace_ampersand_with_space(input_file, output_file=None):
     tree.write(output_file, encoding="utf-8", xml_declaration=True)
     print(f"✅ Replaced '&' with spaces in {count} nodes → {output_file}")
 
-def validation(base_folder="."):
+def validation(base_folder="com"):
     MM_FILE = os.path.join(base_folder, "Merged_Website_Structure.mm")
     OUTPUT_FILE = os.path.join(base_folder, "Full_Website_Structure_updated.mm")
     header_file = os.path.join(base_folder,"header_links.json")
@@ -82,19 +88,14 @@ def validation(base_folder="."):
     Generate a valid FreeMind (.mm) XML file that represents a complete website structure.
 
     ✅ Requirements:
-    1. The first node must be "Home Page".
-    2. The "Home Page" must contain three subnodes:
-    - Header
-    - Main Content
-    - Footer
+    1. Don't change it's structure of nodes just validates all links are in format of hyperlink.
+    2. No phone number should be in hyper link
     3. The "Header" and "Footer" should appear only once, under the Home Page. The content inside them should not include in any other page.
-    4. Every other page (e.g.,Search, About, Contact, Login(if present), Signup(if present), etc.) must be direct subnodes of the header .
     5. Each page node must include all its UI elements (buttons, forms, links, and content) as nested subnodes.
     6. If any page contains subpages, represent them as child nodes under that page.
     7. Maintain a clear hierarchical structure that accurately reflects parent-child relationships between pages and their components.
-    8. If a link’s {texts} contains “login”, “log in”, “sign up”, or “signup” (case-insensitive), then include it as a subnode under the Home Page
     9. Ensure all nodes are properly nested and the XML is valid.
-    10. Use hyperlinks (LINK attribute) for nodes that represent pages, linking to their respective URLs.
+    10. Must Use hyperlinks (LINK attribute) for nodes that represent pages, linking to their respective URLs.
     11. Properly escape XML entities (`& → &amp;`, `< → &lt;`, `>` → &gt;`). 
     The output must be a well-formed .mm (FreeMind) XML mindmap file without any extra commentary.
     """
@@ -107,9 +108,12 @@ def validation(base_folder="."):
 
     Your job:
     - Validate that the .mm structure matches the specified hierarchy and requirements.
-    - Ensure the file includes all expected nodes, subnodes, buttons, links, and forms.
-    - Fix any missing or misplaced elements while preserving valid XML formatting.
-    - Output only the corrected .mm XML file without explanations or comments.
+        You must return strictly valid FreeMind XML (.mm).
+        - No HTML tags
+        - Replace & with &amp;
+        - Ensure every <node> has a closing </node>
+        - Only use UTF-8 safe characters
+        - Hyperlinks for all attributes
     """
 
     full_prompt = f"""
@@ -118,15 +122,6 @@ def validation(base_folder="."):
 
     Original Mindmap (.mm):
     {mm_content}
-
-    Final hirarchical structure must be:
-    Home Page
-    ├── Header
-    ├── [Other Pages like About, Contact ,search etc.]
-    |---Home Page Content
-    ├── Footer
-    ├── Login(if present )
-    ├── Signup(if present )
 
     """
 
@@ -137,7 +132,7 @@ def validation(base_folder="."):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": full_prompt},
         ],
-        temperature=0
+        # temperature=0
     )
     mindmap_content = response.choices[0].message.content.strip()
 
@@ -158,5 +153,5 @@ def validation(base_folder="."):
     print(f"✅ Updated mindmap saved as {OUTPUT_FILE}")
 
 
-# if __name__ == "__main__":
-#     validation()
+if __name__ == "__main__":
+    validation()
