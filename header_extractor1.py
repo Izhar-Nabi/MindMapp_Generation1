@@ -3,7 +3,7 @@ import json
 import os
 import math
 
-def extract_header_links(url, headless=True, output_file="header_links.json"):
+def extract_all_links_with_submenus(url, headless=True, output_file="header_links.json"):
     """
     Extract ONLY:
     - Top level header links (text + href)

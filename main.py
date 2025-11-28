@@ -83,17 +83,17 @@ def extract():
         Screenshot_folder=os.path.join(folder_name,"screenshot/home")
         output_mm_file=os.path.join(folder_name,"mindmaps/home.mm")
         logging.info("Home page mindmap generated.")
-        links_file = extract_all_links_with_submenus(url, headless=True, output_file=json_file_path)
+        extract_all_links_with_submenus(url, headless=True, output_file=json_file_path)
 
-        if not links_file or not os.path.exists(links_file):
-            return jsonify({'error': 'Failed to create header_links.json file'}), 500
+        # if not links_file or not os.path.exists(links_file):
+            # return jsonify({'error': 'Failed to create header_links.json file'}), 500
 
         # Load the links from the generated file to return them in the response
-        with open(links_file, "r", encoding="utf-8") as f:
+        with open(json_file_path, "r", encoding="utf-8") as f:
             cleaned_links = json.load(f)
         
         logging.info(f"Successfully extracted {len(cleaned_links)} links.")
-        input_file = links_file
+        input_file = json_file_path
         try:
             logging.info("🚀 Starting header link extraction process...")
 
